@@ -11,11 +11,11 @@ nodeRegistration:
   taints:
   - effect: NoSchedule
     key: node-role.kubernetes.io/master
+{% else %}
+  taints: []
 {% endif %}
 {% if container_manager == 'crio' %}
   criSocket: /var/run/crio/crio.sock
-{% elif container_manager == 'rkt' %}
-  criSocket: /var/run/rkt.sock
 {% else %}
   criSocket: /var/run/dockershim.sock
 {% endif %}
@@ -29,9 +29,9 @@ etcd:
 {% for endpoint in etcd_access_addresses.split(',') %}
       - {{ endpoint }}
 {% endfor %}
-      caFile: {{ etcd_cert_dir }}/ca.pem
-      certFile: {{ etcd_cert_dir }}/node-{{ inventory_hostname }}.pem
-      keyFile: {{ etcd_cert_dir }}/node-{{ inventory_hostname }}-key.pem
+      caFile: {{ etcd_cert_dir }}/{{ kube_etcd_cacert_file }}
+      certFile: {{ etcd_cert_dir }}/{{ kube_etcd_cert_file }}
+      keyFile: {{ etcd_cert_dir }}/{{ kube_etcd_key_file }}
 networking:
   dnsDomain: {{ dns_domain }}
   serviceSubnet: {{ kube_service_addresses }}
@@ -68,7 +68,7 @@ apiServer:
     endpoint-reconciler-type: lease
 {% endif %}
 {% if etcd_events_cluster_enabled %}
-    etcd-servers-overrides: "/events#{{ etcd_events_access_addresses }}"
+    etcd-servers-overrides: "/events#{{ etcd_events_access_addresses_semicolon }}"
 {% endif %}
     service-node-port-range: {{ kube_apiserver_node_port_range }}
     kubelet-preferred-address-types: "{{ kubelet_preferred_address_types }}"
@@ -91,10 +91,10 @@ apiServer:
     oidc-groups-claim: {{ kube_oidc_groups_claim }}
 {%   endif %}
 {%   if kube_oidc_username_prefix is defined %}
-    oidc-username-prefix: {{ kube_oidc_username_prefix }}
+    oidc-username-prefix: "{{ kube_oidc_username_prefix }}"
 {%   endif %}
 {%   if kube_oidc_groups_prefix is defined %}
-    oidc-groups-prefix: {{ kube_oidc_groups_prefix }}
+    oidc-groups-prefix: "{{ kube_oidc_groups_prefix }}"
 {%   endif %}
 {% endif %}
 {% if kube_webhook_token_auth|default(false) %}
@@ -203,6 +203,9 @@ controllerManager:
 {% elif cloud_provider is defined and cloud_provider in ["external"] %}
     cloud-config: {{ kube_config_dir }}/cloud_config
 {% endif %}
+{% if kube_network_plugin is defined and kube_network_plugin not in ["cloud"] %}
+    configure-cloud-routes: "false"
+{% endif %}
 {% if cloud_provider is defined and cloud_provider in ["openstack", "azure", "vsphere", "aws", "external"] or controller_manager_extra_volumes %}
   extraVolumes:
 {% if cloud_provider is defined and cloud_provider in ["openstack"] and openstack_cacert is defined %}
@@ -256,7 +259,7 @@ clientConnection:
  burst: {{ kube_proxy_client_burst }}
  contentType: {{ kube_proxy_client_content_type }}
  kubeconfig: {{ kube_proxy_client_kubeconfig }}
- qps: {{ kube_proxy_client_kubeconfig }}
+ qps: {{ kube_proxy_client_qps }}
 clusterCIDR: {{ kube_pods_subnet }}
 configSyncPeriod: {{ kube_proxy_config_sync_period }}
 conntrack:
